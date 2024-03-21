@@ -196,7 +196,7 @@ std::vector<Atom> readCoordsCSV(const std::string &filename)
 
     if (!file.is_open())
     {
-        std::cerr << "Error opening file CSV file: " << filename << std::endl;
+        std::cerr << "Error opening CSV file: " << filename << std::endl;
         return {};
     }
 
@@ -688,6 +688,25 @@ void writeBinaryFile(const std::string &filename, const std::vector<std::vector<
     file.close();
 }
 
+std::vector<double> pbc_d(const std::vector<std::vector<double>> &lp, const std::vector<int> &v)
+{
+    {
+
+        int n = lp[0].size(); // Assuming all rows of lp have the same size
+        std::vector<double> d(n, 0.0);
+
+        for (int i = 0; i < 3; ++i)
+        { // Assuming lp always has 3 rows
+            for (int j = 0; j < n; ++j)
+            {
+                d[j] += lp[i][j] * v[i];
+            }
+        }
+
+        return d;
+    }
+}
+
 Structure PBC(const Structure &original_structure, const int &n)
 {
     /**
@@ -699,25 +718,26 @@ Structure PBC(const Structure &original_structure, const int &n)
      */
     Structure structure_pbc;
     std::vector<std::vector<int>> image;
-    for (int i = -n; i < n + 1; ++i)
+    for (int i = -n; i <= n; ++i)
     {
-        for (int j = -n; j < n + 1; ++j)
+        for (int j = -n; j <= n; ++j)
         {
-            for (int k = -n; k < n + 1; ++k)
+            for (int k = -n; k <= n; ++k)
             {
-                std::vector<std::vector<double>> displace_vector = original_structure.lattice_parameters;
-                std::vector<std::vector<double>> displaced_coordinates = original_structure.coordinates;
+                // std::vector<std::vector<double>> displace_vector = original_structure.lattice_parameters;
                 std::vector<int> image_t = {i, j, k};
+                std::vector<double> displace_vector = pbc_d(original_structure.lattice_parameters, image_t);
+                std::vector<std::vector<double>> displaced_coordinates = original_structure.coordinates;
+                // std::cout << "Displace vector " << displace_vector[0] << " " << displace_vector[1] << " " << displace_vector[2] << std::endl;
                 for (int row = 0; row < original_structure.nat; ++row)
                 {
+                    // std::cout << "Coordinates " << displaced_coordinates[row][0] << " " << displaced_coordinates[row][1] << " " << displaced_coordinates[row][2] << std::endl;
                     image.push_back({i, j, k, row});
                     for (int col = 0; col < 3; ++col)
                     {
-                        for (int ang = 0; ang < 3; ++ang)
-                        {
-                            displaced_coordinates[row][col] = displaced_coordinates[row][col] + displace_vector[ang][col] * image_t[col];
-                        }
+                        displaced_coordinates[row][col] = displaced_coordinates[row][col] + displace_vector[col];
                     }
+                    // std::cout << "Displaced Coordinates " << displaced_coordinates[row][0] << " " << displaced_coordinates[row][1] << " " << displaced_coordinates[row][2] << std::endl;
                     structure_pbc.coordinates.push_back(displaced_coordinates[row]);
                     Atom atom_i = {original_structure.symbols[row], displaced_coordinates[row][0], displaced_coordinates[row][1], displaced_coordinates[row][2]};
                     structure_pbc.atoms.push_back(atom_i);
@@ -726,6 +746,11 @@ Structure PBC(const Structure &original_structure, const int &n)
             }
         }
     }
+    // -1.86, 4.2, 5.76
+    // -16.20, -9.663, -15.642
+    // 7.4368090630,0.0000000000,0.0000000000
+    // 0.0000000000,7.7957539558,0.0000000000
+    // -7.4039145041,0.0000000000,8.0082301811
     std::vector<std::vector<double>> lattice_parameters = original_structure.lattice_parameters;
 
     for (size_t i = 0; i < lattice_parameters.size(); ++i)
@@ -1021,38 +1046,6 @@ bool onlyBonding(const std::vector<int> &lst)
     return bonding;
 }
 
-std::vector<std::vector<double>> PBC2(std::vector<std::vector<double>> &coordinates, std::vector<std::vector<double>> &lattice_parameters, const int &n)
-{
-
-    int nat = coordinates.size();
-    std::vector<std::vector<double>> new_coordinates;
-
-    for (int i = -n; i < n + 1; ++i)
-    {
-        for (int j = -n; j < n + 1; ++j)
-        {
-            for (int k = -n; k < n + 1; ++k)
-            {
-                std::vector<std::vector<double>> displace_vector = lattice_parameters;
-                std::vector<std::vector<double>> displaced_coordinates = coordinates;
-                std::vector<int> image_t = {i, j, k};
-                for (int row = 0; row < nat; ++row)
-                {
-                    for (int col = 0; col < 3; ++col)
-                    {
-                        for (int ang = 0; ang < 3; ++ang)
-                        {
-                            displaced_coordinates[row][col] = displaced_coordinates[row][col] + displace_vector[ang][col] * image_t[col];
-                        }
-                    }
-                    new_coordinates.push_back(displaced_coordinates[row]);
-                }
-            }
-        }
-    }
-    return new_coordinates;
-}
-
 std::pair<std::vector<std::vector<double>>, std::vector<int>> PBC3(std::vector<std::vector<double>> &coordinates,
                                                                    std::vector<std::vector<double>> &lattice_parameters,
                                                                    std::vector<int> &symbols,
@@ -1178,7 +1171,7 @@ int main(int argc, char *argv[])
     if (argc != 2)
     {
         std::cout << "Usage: " << argv[0] << " <input_file_name>, using local file config.in instead\n";
-        input_name = "/workspace/shafiro1/post/cycles/embedding/config.in";
+        input_name = "/workspace/shafiro1/post/cycles/bin/config.in";
     }
     else
     {

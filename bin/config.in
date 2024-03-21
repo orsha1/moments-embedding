@@ -1,0 +1,8 @@
+datapath=/workspace/shafiro1/post/cycles/bin/data/embed/
+runpath=/workspace/shafiro1/post/cycles/bin/data/
+n_pbc=2
+l_neis=2
+l_path=5
+type=cycles
+quick=false
+embed=true
