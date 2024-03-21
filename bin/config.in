@@ -6,3 +6,4 @@ l_path=5
 type=cycles
 quick=false
 embed=true
+bond_thr=3.0
