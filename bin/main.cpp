@@ -21,9 +21,14 @@ struct Settings
     std::string datapath;
     std::string type;
     std::string runpath;
+    std::string input_coordinates = "input_coordinates.csv";
+    std::string input_lattice_parameters = "input_lattice_parameters.csv";
+    std::string name = "step";
+
     bool embed;
     bool quick;
     double bond_thr;
+    bool homoatomic_bonding;
 };
 
 struct Atom
@@ -153,7 +158,7 @@ Settings loadSettings(const std::string &filename)
                     }
                     else if (key == "bond_thr")
                     {
-                        settings.bond_thr = std::stoi(value);
+                        settings.bond_thr = std::stod(value);
                     }
                     else if (key == "l_path")
                     {
@@ -175,9 +180,25 @@ Settings loadSettings(const std::string &filename)
                     {
                         settings.type = value;
                     }
+                    else if (key == "coordinates")
+                    {
+                        settings.input_coordinates = value;
+                    }
+                    else if (key == "lattice_parameters")
+                    {
+                        settings.input_lattice_parameters = value;
+                    }
+                    else if (key == "name")
+                    {
+                        settings.name = value;
+                    }
                     else if (key == "quick")
                     {
                         std::istringstream(value) >> std::boolalpha >> settings.quick;
+                    }
+                    else if (key == "homoatomic_bonding")
+                    {
+                        std::istringstream(value) >> std::boolalpha >> settings.homoatomic_bonding;
                     }
                 }
             }
@@ -771,7 +792,7 @@ Structure PBC(const Structure &original_structure, const int &n)
     return structure_pbc;
 }
 
-std::vector<std::vector<int>> mapNeighbors(std::vector<std::vector<double>> &distances, double thr)
+std::vector<std::vector<int>> mapNeighbors(std::vector<std::vector<double>> &distances, std::vector<int> &symbols, double thr, bool homoatomic_bonding)
 {
     /**
      * Map neighboring atoms based on a distance threshold.
@@ -785,11 +806,31 @@ std::vector<std::vector<int>> mapNeighbors(std::vector<std::vector<double>> &dis
     for (int i = 0; i < distances.size(); ++i)
     {
         std::vector<int> neighbors_i;
-        for (int j = 0; j < distances.size(); ++j)
+        if (homoatomic_bonding)
         {
-            if (distances[i][j] < thr & distances[i][j] > 0)
+            // Homoatomic bonding: consider bonds between atoms of the same type
+            for (int j = 0; j < distances[i].size(); ++j)
             {
-                neighbors_i.push_back(j);
+
+                if (distances[i][j] < thr && distances[i][j] > 0)
+                {
+
+                    neighbors_i.push_back(j);
+                }
+            }
+        }
+        else
+        {
+            // Heteroatomic bonding only: consider bonds between atoms of different types
+            int symbol_i = symbols[i];
+            for (int j = 0; j < distances[i].size(); ++j)
+            {
+                int symbol_j = symbols[j];
+                if (distances[i][j] < thr && distances[i][j] > 0 && symbol_i != symbol_j)
+                {
+
+                    neighbors_i.push_back(j);
+                }
             }
         }
         neighbors.push_back(std::move(neighbors_i));
@@ -841,12 +882,12 @@ std::vector<std::vector<std::vector<int>>> generatePaths(std::vector<std::vector
     std::vector<std::vector<int>> cycles;
     std::vector<std::vector<int>> neis;
 
-    for (int i = 1; i < max_length; ++i)
+    for (int i = 1; i <= max_length; ++i)
     {
         paths[i] = expandPaths(neighbors_pbc, paths[i - 1]);
     }
 
-    for (int i = 1; i < max_length_neis; ++i)
+    for (int i = 1; i <= max_length_neis; ++i)
     {
         std::vector<int> neis_n;
 
@@ -967,7 +1008,43 @@ std::vector<Structure> initEmbed(std::string inputname0, std::string inputname1,
 
     // Calculate distances and map neighbors for the PBC structure
     structure_pbc.distances = cdist(structure_pbc.coordinates, structure_pbc.coordinates);
-    structure_pbc.neighbors = mapNeighbors(structure_pbc.distances, settings.bond_thr);
+
+    // for (int i = 0; i < structure_pbc.distances[1984].size(); ++i)
+    //{
+    //     if ((structure_pbc.image[i][0] == 0) & (structure_pbc.image[i][1] == 0) & (structure_pbc.image[i][2] == 0))
+    //     {
+    //         std::cout << i << " " << structure_pbc.symbols[i] << " " << structure_pbc.image[i][0] << " " << structure_pbc.image[i][1] << " " << structure_pbc.image[i][2] << " " << structure_pbc.coordinates[i][0] << " " << structure_pbc.coordinates[i][1] << " " << structure_pbc.coordinates[i][2] << " " << structure_pbc.distances[1984][i] << std::endl;
+    //     }
+    //     //if ((structure_pbc.image[i][0] == 1) & (structure_pbc.image[i][1] == 0) & (structure_pbc.image[i][2] == 0))
+    //     //{
+    //     //    std::cout << i << " " << structure_pbc.symbols[i] << " " << structure_pbc.image[i][0] << " " << structure_pbc.image[i][1] << " " << structure_pbc.image[i][2] << " " << structure_pbc.coordinates[i][0] << " " << structure_pbc.coordinates[i][1] << " " << structure_pbc.coordinates[i][2] << " " << structure_pbc.distances[1984][i] << std::endl;
+    //     //}
+    // }
+
+    structure_pbc.neighbors = mapNeighbors(structure_pbc.distances, structure_pbc.symbols, settings.bond_thr, settings.homoatomic_bonding);
+
+    // for (int j = 0; j < 32; ++j)
+    //{
+    //      int k = 1984+j;
+    //      for (int i = 0; i < structure_pbc.neighbors[k].size(); ++i)
+    //      {
+    //          int n = structure_pbc.neighbors[k][i] ;
+    //          std::cout <<
+    //          j << " " <<
+    //          k << " " <<
+    //          structure_pbc.symbols[k] << " " <<
+    //          i << " " <<
+    //          n << " " <<
+    //          structure_pbc.symbols[n] << " " <<
+    //          structure_pbc.image[n][0] << " " <<
+    //          structure_pbc.image[n][1] << " " <<
+    //          structure_pbc.image[n][2] << " " <<
+    //          structure_pbc.coordinates[n][0] << " " <<
+    //          structure_pbc.coordinates[n][1] << " " <<
+    //          structure_pbc.coordinates[n][2] << " " <<
+    //          structure_pbc.distances[k][n] << std::endl;
+    //      }
+    //  }
 
     return {
         {structure}, {structure_pbc}};
@@ -991,65 +1068,8 @@ Structure embed(Settings settings, Structure structure_pbc)
         }
     }
 
-    // Write embedding data to files
     writeEmbeddingData(structure_pbc, settings);
-
     return structure_pbc;
-}
-
-bool onlyBonding(const std::vector<int> &lst)
-{
-    std::vector<int> result0;
-    std::vector<int> result1;
-    // std::vector<std::vector<int>> result;
-    bool bonding = false;
-
-    for (size_t i = 0; i < lst.size(); i += 2)
-    {
-        result0.push_back(lst[i]);
-    }
-    // result.push_back(result0);
-
-    for (size_t i = 1; i < lst.size(); i += 2)
-    {
-        result1.push_back(lst[i]);
-    }
-
-    // result.push_back(result1);
-
-    bool contains_8_0 = false;
-    bool contains_8_1 = false;
-    bool only_8_0 = true;
-    bool only_8_1 = true;
-
-    for (const auto &element : result0)
-    {
-        if (element == 8)
-        {
-            contains_8_0 = true;
-        }
-        else
-        {
-            only_8_0 = false;
-        }
-    }
-
-    for (const auto &element : result1)
-    {
-        if (element == 8)
-        {
-            contains_8_1 = true;
-        }
-        else
-        {
-            only_8_1 = false;
-        }
-    }
-    if ((!contains_8_0 && only_8_1) || (!contains_8_1 && only_8_0))
-    {
-        bonding = true;
-    }
-    return bonding;
 }
 
 std::pair<std::vector<std::vector<double>>, std::vector<int>> PBC3(std::vector<std::vector<double>> &coordinates,
@@ -1141,6 +1161,28 @@ void sortBySmallestXSum(std::vector<double> &vec)
     }
 }
 
+void saveVectorToFile(const std::vector<int> &vec, const std::string &filename)
+{
+    // Open the file for writing
+    std::ofstream file(filename);
+
+    // Check if the file is opened successfully
+    if (file.is_open())
+    {
+        // Write each integer from the vector to the file
+        for (int i = 0; i < vec.size(); ++i)
+        {
+            file << vec[i] << " ";
+        }
+        file.close();
+        std::cout << "Vector saved to file successfully." << std::endl;
+    }
+    else
+    {
+        std::cerr << "Unable to open file for writing." << std::endl;
+    }
+}
+
 void saveVectorToBinaryFile(const std::vector<std::vector<double>> &data, const std::string &filename)
 {
     std::ofstream file(filename, std::ios::out | std::ios::binary);
@@ -1187,8 +1229,8 @@ int main(int argc, char *argv[])
     // Embedding process (if enabled in the settings)
     if (settings.embed)
     {
-        std::string inputname0 = settings.datapath + "input_coordinates.csv";
-        std::string inputname1 = settings.datapath + "input_lattice_parameters.csv";
+        std::string inputname0 = settings.datapath + settings.input_coordinates;
+        std::string inputname1 = settings.datapath + settings.input_lattice_parameters;
         std::string inputname2 = settings.datapath + "cycles_pbc.dat";
         std::string inputname3 = settings.datapath + "self_returning_pbc.dat";
         std::string inputname4 = settings.datapath + "neis.dat";
@@ -1199,6 +1241,7 @@ int main(int argc, char *argv[])
         Structure structure = structures[0];
         Structure structure_pbc = structures[1];
         embed(settings, structure_pbc);
+
         structure_pbc.cycles_full = readPaths(inputname2);
         structure_pbc.self_returning_full = readPaths(inputname3);
         structure_pbc.neis_full = readPaths(inputname4);
@@ -1222,7 +1265,8 @@ int main(int argc, char *argv[])
             {
                 int nei = only_cyc[j];
                 int symbols_i = structure_pbc.symbols[nei];
-                if (symbol0 != symbols_i)
+
+                if (atom0 != nei)
                 {
                     cycle_new.push_back(only_cyc[j]);
                     cycle_new[1] += 1;
@@ -1231,60 +1275,51 @@ int main(int argc, char *argv[])
             structure_pbc.neis.push_back(cycle_new);
         }
 
-        for (int i = 0; i < structure_pbc.cycles_full.size(); ++i)
+        if (settings.type == "cycles")
         {
-            std::vector<int> cycle = structure_pbc.cycles_full[i];
-            int length = cycle[2];
-            if (length > 1)
+            for (int i = 0; i < structure_pbc.cycles_full.size(); ++i)
             {
-                std::vector<int> symbols_i(length);
-                std::vector<int> only_cyc(cycle.begin() + 3, cycle.end());
-                for (int j = 0; j < length; ++j)
+                std::vector<int> cycle = structure_pbc.cycles_full[i];
+                int length = cycle[2];
+                if (length > 1)
                 {
-                    symbols_i[j] = structure_pbc.symbols[only_cyc[j]];
+                    std::vector<int> symbols_i(length);
+                    std::vector<int> only_cyc(cycle.begin() + 3, cycle.end());
+                    for (int j = 0; j < length; ++j)
+                    {
+                        symbols_i[j] = structure_pbc.symbols[only_cyc[j]];
+                    }
+
+                    structure_pbc.cycles.push_back(cycle);
                 }
-                bool bonding = onlyBonding(symbols_i);
-                if (bonding)
+                else
                 {
                     structure_pbc.cycles.push_back(cycle);
                 }
             }
-            else
-            {
-                structure_pbc.cycles.push_back(cycle);
-            }
-        }
-
-        for (int i = 0; i < structure_pbc.self_returning_full.size(); ++i)
-        {
-            std::vector<int> cycle = structure_pbc.self_returning_full[i];
-            int length = cycle[2];
-            if (length > 1)
-            {
-                std::vector<int> symbols_i(length);
-                std::vector<int> only_cyc(cycle.begin() + 3, cycle.end());
-                for (int j = 0; j < length; ++j)
-                {
-                    symbols_i[j] = structure_pbc.symbols[only_cyc[j]];
-                }
-                bool bonding = onlyBonding(symbols_i);
-                if (bonding)
-                {
-                    structure_pbc.self_returning.push_back(cycle);
-                }
-            }
-            else
-            {
-                structure_pbc.self_returning.push_back(cycle);
-            }
-        }
-
-        if (settings.type == "cycles")
-        {
             writeBinaryFile(settings.datapath + "embed_metadata.bin", structure_pbc.cycles);
         }
         if (settings.type == "paths")
         {
+            for (int i = 0; i < structure_pbc.self_returning_full.size(); ++i)
+            {
+                std::vector<int> cycle = structure_pbc.self_returning_full[i];
+                int length = cycle[2];
+                if (length > 1)
+                {
+                    std::vector<int> symbols_i(length);
+                    std::vector<int> only_cyc(cycle.begin() + 3, cycle.end());
+                    for (int j = 0; j < length; ++j)
+                    {
+                        symbols_i[j] = structure_pbc.symbols[only_cyc[j]];
+                    }
+                    structure_pbc.self_returning.push_back(cycle);
+                }
+                else
+                {
+                    structure_pbc.self_returning.push_back(cycle);
+                }
+            }
             writeBinaryFile(settings.datapath + "embed_metadata.bin", structure_pbc.self_returning);
         }
         writeBinaryFile(settings.datapath + "neis_metadata.bin", structure_pbc.neis);
@@ -1298,7 +1333,8 @@ int main(int argc, char *argv[])
     if (settings.quick)
     {
         // const clock_t t0 = clock();
-        std::vector<std::vector<double>> step_structure = readLatticeParamsCSV(settings.runpath + "step_coordinates.csv"); // Read the coordinates
+        std::vector<std::vector<double>> step_structure = readLatticeParamsCSV(settings.runpath + settings.input_coordinates); // Read the coordinates
+
         int nat = step_structure.size();
         std::vector<std::vector<double>> relative_coordiates(nat, std::vector<double>(3, 0.0));
         std::vector<int> symbols(nat);
@@ -1311,7 +1347,7 @@ int main(int argc, char *argv[])
             symbols[i] = step_structure[i][0];
         }
 
-        std::vector<std::vector<double>> lattice_parameters = readLatticeParamsCSV(settings.runpath + "step_lattice_parameters.csv"); // Read lattice parameters
+        std::vector<std::vector<double>> lattice_parameters = readLatticeParamsCSV(settings.runpath + settings.input_lattice_parameters); // Read lattice parameters
         std::vector<std::vector<int>> embedding_data = readBinaryFile(settings.datapath + "embed_metadata.bin");
         std::vector<std::vector<int>> neis_data = readBinaryFile(settings.datapath + "neis_metadata.bin");
 
@@ -1418,6 +1454,10 @@ int main(int argc, char *argv[])
                 neis[im].push_back(nei_coords[0] - coords_i[0]);
                 neis[im].push_back(nei_coords[1] - coords_i[1]);
                 neis[im].push_back(nei_coords[2] - coords_i[2]);
+                if (atom == 1984)
+                {
+                    std::cout << length << " " << idx << " " << symbols_pbc[idx] << "," << nei_coords[0] << "," << nei_coords[1] << "," << nei_coords[2] << std::endl;
+                }
             }
         }
         std::vector<std::vector<double>> nei_matrix(nat, std::vector<double>());
@@ -1452,8 +1492,8 @@ int main(int argc, char *argv[])
             }
         }
 
-        saveVectorToBinaryFile(emb_matrix, settings.runpath + "embed_step.bin");
-        saveVectorToBinaryFile(nei_matrix, settings.runpath + "neis_step.bin");
+        saveVectorToBinaryFile(emb_matrix, settings.runpath + settings.name + "_embed.bin");
+        saveVectorToBinaryFile(nei_matrix, settings.runpath + settings.name + "_neis.bin");
     }
 
     return 0;

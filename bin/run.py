@@ -37,21 +37,27 @@ def main(config_file):
         config["quick"] = "true" if config["calculation"] == "full" else "false"
         create_dir(os.path.join(main_dir, "embed"))
 
-    file_mappings = [(os.path.join(main_dir, config["in_lp"]), os.path.join(main_dir, "embed", "input_lattice_parameters.csv")), (os.path.join(main_dir, config["in_coords"]), os.path.join(main_dir, "embed", "input_coordinates.csv"))]
-    copy_files(file_mappings)
+    # file_mappings = [(os.path.join(main_dir, config["in_lp"]), os.path.join(main_dir, "embed", "input_lattice_parameters.csv")), (os.path.join(main_dir, config["in_coords"]), os.path.join(main_dir, "embed", "input_coordinates.csv"))]
+    # copy_files(file_mappings)
 
     config["runpath"] = os.path.abspath(main_dir)
     config["datapath"] = os.path.join(config["runpath"], "embed")
 
     with open(os.path.join(main_dir, f"{config['name']}.in"), "w") as f:
+        f.write(f"name={config['name']}\n")
         f.write(f"datapath={config['datapath']}/\n")
         f.write(f"runpath={config['runpath']}/\n")
+        if "in_lp" in config:
+            f.write(f"lattice_parameters={config['in_lp']}\n")
+        if "in_coords" in config:
+            f.write(f"coordinates={config['in_coords']}\n")
         f.write(f"n_pbc={config['n_pbc']}\n")
         f.write(f"l_neis={config['l_neis']}\n")
         f.write(f"l_path={config['l_path']}\n")
         f.write(f"type={config['type']}\n")
         f.write(f"quick={config['quick']}\n")
-        f.write(f"embed={config['embed']}")
+        f.write(f"embed={config['embed']}\n")
+        f.write(f"bond_thr={config['bond_thr']}")
 
     subprocess.run([os.path.join(config["embedpath"], "main"), os.path.join(main_dir, f"{config['name']}.in")])
 
